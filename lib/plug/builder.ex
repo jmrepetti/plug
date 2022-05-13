@@ -110,7 +110,6 @@ defmodule Plug.Builder do
     quote do
       @behaviour Plug
       @plug_builder_opts unquote(opts)
-
       def init(opts) do
         opts
       end
@@ -121,7 +120,7 @@ defmodule Plug.Builder do
 
       defoverridable Plug
 
-      import Plug.Conn
+      import unquote(opts[:conn_module] || Plug.Conn) # Plug.Conn
       import Plug.Builder, only: [plug: 1, plug: 2, builder_opts: 0]
 
       Module.register_attribute(__MODULE__, :plugs, accumulate: true)
@@ -155,10 +154,11 @@ defmodule Plug.Builder do
       end
 
     plug_builder_call =
-      if assign = builder_opts[:copy_opts_to_assign] do
+      if assign = builder_opts[:copy_opts_to_assign] do\
+        conn_mod = builder_opts[:conn_module] || Plug.Conn
         quote do
           defp plug_builder_call(conn, opts) do
-            unquote(conn) = Plug.Conn.assign(conn, unquote(assign), opts)
+            unquote(conn) = unquote(conn_mod).assign(conn, unquote(assign), opts)
             unquote(body)
           end
         end
@@ -362,14 +362,14 @@ defmodule Plug.Builder do
         :module -> "expected #{inspect(plug)}.call/2 to return a Plug.Conn"
         :function -> "expected #{plug}/2 to return a Plug.Conn"
       end <> ", all plugs must receive a connection (conn) and return a connection"
-
+    conn_mod = (builder_opts[:conn_module] || Plug.Conn)
     quote generated: true do
       case unquote(compile_guards(call, guards)) do
-        %Plug.Conn{halted: true} = conn ->
+        %{__struct__: unquote(conn_mod), halted: true} = conn ->
           unquote(log_halt(plug_type, plug, env, builder_opts))
           conn
 
-        %Plug.Conn{} = conn ->
+        %{__struct__: unquote(conn_mod)} = conn ->
           unquote(acc)
 
         other ->
